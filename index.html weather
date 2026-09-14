@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Weather</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <main class="app">
+    <header class="app-header">
+      <h1>Weather</h1>
+      <div class="header-actions">
+        <button id="themeToggle" class="theme-toggle" type="button" aria-label="Toggle dark mode">🌙</button>
+        <button id="unitToggle" class="unit-toggle" type="button" aria-label="Toggle temperature unit">°F</button>
+      </div>
+    </header>
+
+    <form id="searchForm" class="search-form" autocomplete="off">
+      <input type="text" id="citySearch" placeholder="Search for a city…" aria-label="Search for a city">
+      <button type="submit" class="btn btn-primary">Search</button>
+      <button type="button" id="locateBtn" class="btn btn-secondary" title="Use my location">📍</button>
+    </form>
+
+    <div id="suggestions" class="suggestions" hidden></div>
+
+    <div id="recentChips" class="recent-chips"></div>
+
+    <div id="statusMessage" class="status-message" hidden></div>
+
+    <section id="currentWeather" class="current-weather" hidden>
+      <div class="current-main">
+        <div class="current-icon" id="currentIcon">☀️</div>
+        <div class="current-temp" id="currentTemp">--°</div>
+      </div>
+      <div class="current-details">
+        <p class="current-place" id="currentPlace">—</p>
+        <p class="current-condition" id="currentCondition">—</p>
+        <p class="current-feels" id="currentFeels">Feels like --°</p>
+      </div>
+      <div class="stat-grid">
+        <div class="stat">
+          <span class="stat-label">Humidity</span>
+          <span class="stat-value" id="statHumidity">--%</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Wind</span>
+          <span class="stat-value" id="statWind">-- mph</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">High / Low</span>
+          <span class="stat-value" id="statHighLow">--° / --°</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">UV Index</span>
+          <span class="stat-value" id="statUv">--</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Sunrise</span>
+          <span class="stat-value" id="statSunrise">--:--</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Sunset</span>
+          <span class="stat-value" id="statSunset">--:--</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="hourlyForecast" class="hourly-forecast" hidden>
+      <h2>Hourly Forecast</h2>
+      <div class="hourly-scroll" id="hourlyScroll"></div>
+    </section>
+
+    <section id="forecast" class="forecast" hidden>
+      <h2>5-Day Forecast</h2>
+      <div class="forecast-grid" id="forecastGrid"></div>
+    </section>
+  </main>
+
+  <script src="js/script.js"></script>
+</body>
+</html>
