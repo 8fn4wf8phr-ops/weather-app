@@ -16,6 +16,26 @@
   --max-width: 480px;
 }
 
+:root[data-theme="dark"] {
+  --color-bg: #0f1720;
+  --color-card: #182430;
+  --color-text: #eef5fb;
+  --color-muted: #93a4b8;
+  --color-accent: #5b9bf5;
+  --color-accent-dark: #7fb0ff;
+  --color-border: #2a3b4d;
+}
+
+:root[data-theme="dark"] body {
+  background: linear-gradient(180deg, #0b1219 0%, #0f1720 240px, #0f1720 100%);
+}
+
+:root[data-theme="dark"] .status-message.error {
+  color: #ff8a80;
+  border-color: #5c2b26;
+  background: #2a1614;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   color: var(--color-text);
@@ -45,7 +65,14 @@ body {
   font-weight: 700;
 }
 
-.unit-toggle {
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.unit-toggle,
+.theme-toggle {
   background: var(--color-card);
   border: 1px solid var(--color-border);
   border-radius: 999px;
@@ -55,7 +82,13 @@ body {
   cursor: pointer;
 }
 
-.unit-toggle:hover {
+.theme-toggle {
+  padding: 6px 10px;
+  font-size: 0.95rem;
+}
+
+.unit-toggle:hover,
+.theme-toggle:hover {
   background: var(--color-border);
 }
 
@@ -252,6 +285,51 @@ body {
   font-weight: 700;
 }
 
+/* ---- Hourly forecast ---- */
+.hourly-forecast h2 {
+  font-size: 1rem;
+  margin-bottom: 10px;
+  color: var(--color-muted);
+}
+
+.hourly-forecast {
+  margin-bottom: 20px;
+}
+
+.hourly-scroll {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+
+.hourly-hour {
+  flex: 0 0 auto;
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  padding: 10px 14px;
+  text-align: center;
+  min-width: 64px;
+}
+
+.hourly-hour .hour-time {
+  font-size: 0.75rem;
+  color: var(--color-muted);
+  font-weight: 600;
+}
+
+.hourly-hour .hour-icon {
+  font-size: 1.4rem;
+  margin: 6px 0;
+}
+
+.hourly-hour .hour-temp {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
 /* ---- Forecast ---- */
 .forecast h2 {
   font-size: 1rem;
@@ -293,6 +371,57 @@ body {
   color: var(--color-muted);
   font-size: 0.8rem;
 }
+
+/* ---- Weather icon animations ---- */
+.current-icon,
+.day-icon,
+.hour-icon {
+  display: inline-block;
+}
+
+@keyframes wx-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes wx-drift {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(4px); }
+}
+
+@keyframes wx-fall {
+  0% { transform: translateY(-3px); opacity: 0.85; }
+  50% { transform: translateY(2px); opacity: 1; }
+  100% { transform: translateY(-3px); opacity: 0.85; }
+}
+
+@keyframes wx-drop {
+  0% { transform: translateY(-2px); }
+  60% { transform: translateY(3px); }
+  100% { transform: translateY(-2px); }
+}
+
+@keyframes wx-flicker {
+  0%, 100% { opacity: 1; }
+  45% { opacity: 1; }
+  50% { opacity: 0.4; }
+  55% { opacity: 1; }
+  90% { opacity: 1; }
+  93% { opacity: 0.5; }
+  96% { opacity: 1; }
+}
+
+@keyframes wx-pulse {
+  0%, 100% { opacity: 0.75; }
+  50% { opacity: 1; }
+}
+
+.wx-sun { animation: wx-spin 12s linear infinite; }
+.wx-cloud { animation: wx-drift 4s ease-in-out infinite; }
+.wx-rain { animation: wx-drop 1s ease-in-out infinite; }
+.wx-snow { animation: wx-fall 2.4s ease-in-out infinite; }
+.wx-storm { animation: wx-flicker 2.5s ease-in-out infinite; }
+.wx-fog { animation: wx-pulse 3s ease-in-out infinite; }
 
 @media (max-width: 420px) {
   .forecast-grid {

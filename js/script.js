@@ -1,42 +1,44 @@
 // ---- Weather code -> description/icon (WMO codes, used by Open-Meteo) ----
 const WEATHER_CODES = {
-  0: { desc: 'Clear sky', icon: '☀️' },
-  1: { desc: 'Mainly clear', icon: '🌤️' },
-  2: { desc: 'Partly cloudy', icon: '⛅' },
-  3: { desc: 'Overcast', icon: '☁️' },
-  45: { desc: 'Fog', icon: '🌫️' },
-  48: { desc: 'Depositing rime fog', icon: '🌫️' },
-  51: { desc: 'Light drizzle', icon: '🌦️' },
-  53: { desc: 'Drizzle', icon: '🌦️' },
-  55: { desc: 'Dense drizzle', icon: '🌦️' },
-  56: { desc: 'Freezing drizzle', icon: '🌧️' },
-  57: { desc: 'Dense freezing drizzle', icon: '🌧️' },
-  61: { desc: 'Slight rain', icon: '🌧️' },
-  63: { desc: 'Rain', icon: '🌧️' },
-  65: { desc: 'Heavy rain', icon: '🌧️' },
-  66: { desc: 'Freezing rain', icon: '🌧️' },
-  67: { desc: 'Heavy freezing rain', icon: '🌧️' },
-  71: { desc: 'Slight snow', icon: '❄️' },
-  73: { desc: 'Snow', icon: '❄️' },
-  75: { desc: 'Heavy snow', icon: '❄️' },
-  77: { desc: 'Snow grains', icon: '❄️' },
-  80: { desc: 'Slight rain showers', icon: '🌦️' },
-  81: { desc: 'Rain showers', icon: '🌦️' },
-  82: { desc: 'Violent rain showers', icon: '⛈️' },
-  85: { desc: 'Slight snow showers', icon: '🌨️' },
-  86: { desc: 'Heavy snow showers', icon: '🌨️' },
-  95: { desc: 'Thunderstorm', icon: '⛈️' },
-  96: { desc: 'Thunderstorm with hail', icon: '⛈️' },
-  99: { desc: 'Severe thunderstorm with hail', icon: '⛈️' },
+  0: { desc: 'Clear sky', icon: '☀️', category: 'wx-sun' },
+  1: { desc: 'Mainly clear', icon: '🌤️', category: 'wx-sun' },
+  2: { desc: 'Partly cloudy', icon: '⛅', category: 'wx-cloud' },
+  3: { desc: 'Overcast', icon: '☁️', category: 'wx-cloud' },
+  45: { desc: 'Fog', icon: '🌫️', category: 'wx-fog' },
+  48: { desc: 'Depositing rime fog', icon: '🌫️', category: 'wx-fog' },
+  51: { desc: 'Light drizzle', icon: '🌦️', category: 'wx-rain' },
+  53: { desc: 'Drizzle', icon: '🌦️', category: 'wx-rain' },
+  55: { desc: 'Dense drizzle', icon: '🌦️', category: 'wx-rain' },
+  56: { desc: 'Freezing drizzle', icon: '🌧️', category: 'wx-rain' },
+  57: { desc: 'Dense freezing drizzle', icon: '🌧️', category: 'wx-rain' },
+  61: { desc: 'Slight rain', icon: '🌧️', category: 'wx-rain' },
+  63: { desc: 'Rain', icon: '🌧️', category: 'wx-rain' },
+  65: { desc: 'Heavy rain', icon: '🌧️', category: 'wx-rain' },
+  66: { desc: 'Freezing rain', icon: '🌧️', category: 'wx-rain' },
+  67: { desc: 'Heavy freezing rain', icon: '🌧️', category: 'wx-rain' },
+  71: { desc: 'Slight snow', icon: '❄️', category: 'wx-snow' },
+  73: { desc: 'Snow', icon: '❄️', category: 'wx-snow' },
+  75: { desc: 'Heavy snow', icon: '❄️', category: 'wx-snow' },
+  77: { desc: 'Snow grains', icon: '❄️', category: 'wx-snow' },
+  80: { desc: 'Slight rain showers', icon: '🌦️', category: 'wx-rain' },
+  81: { desc: 'Rain showers', icon: '🌦️', category: 'wx-rain' },
+  82: { desc: 'Violent rain showers', icon: '⛈️', category: 'wx-storm' },
+  85: { desc: 'Slight snow showers', icon: '🌨️', category: 'wx-snow' },
+  86: { desc: 'Heavy snow showers', icon: '🌨️', category: 'wx-snow' },
+  95: { desc: 'Thunderstorm', icon: '⛈️', category: 'wx-storm' },
+  96: { desc: 'Thunderstorm with hail', icon: '⛈️', category: 'wx-storm' },
+  99: { desc: 'Severe thunderstorm with hail', icon: '⛈️', category: 'wx-storm' },
 };
 
 function weatherInfo(code) {
-  return WEATHER_CODES[code] || { desc: 'Unknown', icon: '❔' };
+  return WEATHER_CODES[code] || { desc: 'Unknown', icon: '❔', category: '' };
 }
 
 // ---- State ----
 let unit = localStorage.getItem('weatherUnit') || 'F'; // 'F' or 'C'
 let lastResult = null; // raw Celsius data from the API, re-rendered on unit toggle
+let theme = localStorage.getItem('weatherTheme')
+  || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
 
 // ---- Elements ----
 const searchForm = document.getElementById('searchForm');
@@ -45,6 +47,7 @@ const suggestionsEl = document.getElementById('suggestions');
 const recentChipsEl = document.getElementById('recentChips');
 const statusEl = document.getElementById('statusMessage');
 const unitToggle = document.getElementById('unitToggle');
+const themeToggle = document.getElementById('themeToggle');
 const locateBtn = document.getElementById('locateBtn');
 
 const currentWeatherEl = document.getElementById('currentWeather');
@@ -56,6 +59,12 @@ const currentFeelsEl = document.getElementById('currentFeels');
 const statHumidityEl = document.getElementById('statHumidity');
 const statWindEl = document.getElementById('statWind');
 const statHighLowEl = document.getElementById('statHighLow');
+const statUvEl = document.getElementById('statUv');
+const statSunriseEl = document.getElementById('statSunrise');
+const statSunsetEl = document.getElementById('statSunset');
+
+const hourlyForecastEl = document.getElementById('hourlyForecast');
+const hourlyScrollEl = document.getElementById('hourlyScroll');
 
 const forecastEl = document.getElementById('forecast');
 const forecastGridEl = document.getElementById('forecastGrid');
@@ -159,7 +168,8 @@ async function fetchWeather(lat, lon) {
     latitude: lat,
     longitude: lon,
     current: 'temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m',
-    daily: 'weather_code,temperature_2m_max,temperature_2m_min',
+    hourly: 'temperature_2m,weather_code',
+    daily: 'weather_code,temperature_2m_max,temperature_2m_min,uv_index_max,sunrise,sunset',
     timezone: 'auto',
     forecast_days: 5,
   });
@@ -177,6 +187,7 @@ function renderWeather(place, data) {
   const info = weatherInfo(current.weather_code);
 
   currentIconEl.textContent = info.icon;
+  currentIconEl.className = `current-icon ${info.category}`;
   currentTempEl.textContent = formatTemp(current.temperature_2m);
   currentPlaceEl.textContent = place.label;
   currentConditionEl.textContent = info.desc;
@@ -190,7 +201,41 @@ function renderWeather(place, data) {
   const todayLow = data.daily.temperature_2m_min[0];
   statHighLowEl.textContent = `${formatTemp(todayHigh)} / ${formatTemp(todayLow)}`;
 
+  const uvIndex = data.daily.uv_index_max?.[0];
+  statUvEl.textContent = uvIndex != null ? Math.round(uvIndex) : '--';
+
+  const timeFormat = { hour: 'numeric', minute: '2-digit' };
+  const sunrise = data.daily.sunrise?.[0];
+  const sunset = data.daily.sunset?.[0];
+  statSunriseEl.textContent = sunrise ? new Date(sunrise).toLocaleTimeString(undefined, timeFormat) : '--:--';
+  statSunsetEl.textContent = sunset ? new Date(sunset).toLocaleTimeString(undefined, timeFormat) : '--:--';
+
   currentWeatherEl.hidden = false;
+
+  // Hourly strip: next 24 hours starting from the current hour
+  if (data.hourly) {
+    hourlyScrollEl.innerHTML = '';
+    const nowIso = data.current.time;
+    let startIdx = data.hourly.time.findIndex(t => t >= nowIso);
+    if (startIdx === -1) startIdx = 0;
+    const hours = data.hourly.time.slice(startIdx, startIdx + 24);
+    hours.forEach((timeStr, offset) => {
+      const idx = startIdx + offset;
+      const hourInfo = weatherInfo(data.hourly.weather_code[idx]);
+      const date = new Date(timeStr);
+      const label = offset === 0 ? 'Now' : date.toLocaleTimeString(undefined, { hour: 'numeric' });
+
+      const card = document.createElement('div');
+      card.className = 'hourly-hour';
+      card.innerHTML = `
+        <div class="hour-time">${label}</div>
+        <div class="hour-icon ${hourInfo.category}">${hourInfo.icon}</div>
+        <div class="hour-temp">${formatTemp(data.hourly.temperature_2m[idx])}</div>
+      `;
+      hourlyScrollEl.appendChild(card);
+    });
+    hourlyForecastEl.hidden = hours.length === 0;
+  }
 
   // Forecast strip
   forecastGridEl.innerHTML = '';
@@ -204,7 +249,7 @@ function renderWeather(place, data) {
     card.className = 'forecast-day';
     card.innerHTML = `
       <div class="day-name">${dayName}</div>
-      <div class="day-icon">${dayInfo.icon}</div>
+      <div class="day-icon ${dayInfo.category}">${dayInfo.icon}</div>
       <div class="day-high">${formatTemp(data.daily.temperature_2m_max[i])}</div>
       <div class="day-low">${formatTemp(data.daily.temperature_2m_min[i])}</div>
     `;
@@ -226,6 +271,7 @@ async function loadWeather(place) {
   } catch (err) {
     showStatus("Couldn't load weather for that location. Please try again.", true);
     currentWeatherEl.hidden = true;
+    hourlyForecastEl.hidden = true;
     forecastEl.hidden = true;
   }
 }
@@ -289,6 +335,17 @@ function handleLocate() {
   );
 }
 
+function applyTheme() {
+  document.documentElement.setAttribute('data-theme', theme);
+  themeToggle.textContent = theme === 'dark' ? '☀️' : '🌙';
+}
+
+function handleThemeToggle() {
+  theme = theme === 'dark' ? 'light' : 'dark';
+  localStorage.setItem('weatherTheme', theme);
+  applyTheme();
+}
+
 function handleUnitToggle() {
   unit = unit === 'F' ? 'C' : 'F';
   unitToggle.textContent = `°${unit}`;
@@ -300,6 +357,7 @@ function handleUnitToggle() {
 
 // ---- Init ----
 unitToggle.textContent = `°${unit}`;
+applyTheme();
 searchForm.addEventListener('submit', handleSearchSubmit);
 citySearch.addEventListener('input', handleSearchInput);
 document.addEventListener('click', (e) => {
@@ -309,6 +367,7 @@ document.addEventListener('click', (e) => {
 });
 locateBtn.addEventListener('click', handleLocate);
 unitToggle.addEventListener('click', handleUnitToggle);
+themeToggle.addEventListener('click', handleThemeToggle);
 
 renderRecents();
 

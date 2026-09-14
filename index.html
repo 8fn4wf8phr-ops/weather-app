@@ -11,7 +11,10 @@
   <main class="app">
     <header class="app-header">
       <h1>Weather</h1>
-      <button id="unitToggle" class="unit-toggle" type="button" aria-label="Toggle temperature unit">°F</button>
+      <div class="header-actions">
+        <button id="themeToggle" class="theme-toggle" type="button" aria-label="Toggle dark mode">🌙</button>
+        <button id="unitToggle" class="unit-toggle" type="button" aria-label="Toggle temperature unit">°F</button>
+      </div>
     </header>
 
     <form id="searchForm" class="search-form" autocomplete="off">
@@ -49,7 +52,24 @@
           <span class="stat-label">High / Low</span>
           <span class="stat-value" id="statHighLow">--° / --°</span>
         </div>
+        <div class="stat">
+          <span class="stat-label">UV Index</span>
+          <span class="stat-value" id="statUv">--</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Sunrise</span>
+          <span class="stat-value" id="statSunrise">--:--</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Sunset</span>
+          <span class="stat-value" id="statSunset">--:--</span>
+        </div>
       </div>
+    </section>
+
+    <section id="hourlyForecast" class="hourly-forecast" hidden>
+      <h2>Hourly Forecast</h2>
+      <div class="hourly-scroll" id="hourlyScroll"></div>
     </section>
 
     <section id="forecast" class="forecast" hidden>
