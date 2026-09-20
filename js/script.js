@@ -7,7 +7,7 @@
 // Secret Key here), and the demo tier's 50 requests/hour is shared by
 // everyone using the site.
 // ======================================================================
-const UNSPLASH_ACCESS_KEY = 'YOUR_UNSPLASH_ACCESS_KEY';
+const UNSPLASH_ACCESS_KEY = 'xlAEgLJQMyqoJTZrCGsP60qLMAA3yrxTDzu0VgE5h0w';
 
 // ---- Weather code -> description/icon (WMO codes, used by Open-Meteo) ----
 const WEATHER_CODES = {
