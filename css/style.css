@@ -72,7 +72,8 @@ body {
 }
 
 .unit-toggle,
-.theme-toggle {
+.theme-toggle,
+.city-view-toggle {
   background: var(--color-card);
   border: 1px solid var(--color-border);
   border-radius: 999px;
@@ -88,8 +89,74 @@ body {
 }
 
 .unit-toggle:hover,
-.theme-toggle:hover {
+.theme-toggle:hover,
+.city-view-toggle:hover {
   background: var(--color-border);
+}
+
+.city-view-toggle {
+  padding: 6px 12px;
+  font-size: 0.85rem;
+}
+
+.city-view-toggle[aria-pressed="true"],
+.city-view-toggle[aria-pressed="true"]:hover {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+
+/* ---- City View (Wikipedia photo background) ---- */
+.city-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.city-bg-layer {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+.city-bg-layer.visible {
+  opacity: 1;
+}
+
+/* Text that sits directly on the page background (not inside a card) needs
+   to flip to light when a dark-overlaid photo is behind it. */
+.has-city-bg .app-header h1,
+.has-city-bg .hourly-forecast h2,
+.has-city-bg .forecast h2 {
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+/* Anchored to the page's bottom corner (inside body's 64px bottom padding)
+   rather than fixed to the viewport, so it never floats over weather info. */
+body {
+  position: relative;
+}
+
+.city-credit {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(0, 0, 0, 0.35);
+  padding: 2px 8px;
+  border-radius: 999px;
+  text-decoration: none;
+}
+
+.city-credit:hover {
+  color: #fff;
+  text-decoration: underline;
 }
 
 /* ---- Search ---- */
@@ -424,6 +491,9 @@ body {
 .wx-fog { animation: wx-pulse 3s ease-in-out infinite; }
 
 @media (max-width: 420px) {
+  .toggle-label {
+    display: none;
+  }
   .forecast-grid {
     grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 4px;

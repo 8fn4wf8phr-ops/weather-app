@@ -39,6 +39,8 @@ let unit = localStorage.getItem('weatherUnit') || 'F'; // 'F' or 'C'
 let lastResult = null; // raw Celsius data from the API, re-rendered on unit toggle
 let theme = localStorage.getItem('weatherTheme')
   || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+let cityView = localStorage.getItem('weatherCityView') === 'on'; // off by default: no Wikipedia requests until opted in
+let cityImageController = null; // aborts the in-flight photo lookup when the user moves on
 
 // ---- Elements ----
 const searchForm = document.getElementById('searchForm');
@@ -48,6 +50,9 @@ const recentChipsEl = document.getElementById('recentChips');
 const statusEl = document.getElementById('statusMessage');
 const unitToggle = document.getElementById('unitToggle');
 const themeToggle = document.getElementById('themeToggle');
+const cityViewToggle = document.getElementById('cityViewToggle');
+const cityBgEl = document.getElementById('cityBg');
+const cityCreditEl = document.getElementById('cityCredit');
 const locateBtn = document.getElementById('locateBtn');
 
 const currentWeatherEl = document.getElementById('currentWeather');
@@ -137,6 +142,9 @@ async function searchCities(query) {
   const data = await res.json();
   return (data.results || []).map(r => ({
     label: [r.name, r.admin1, r.country].filter(Boolean).join(', '),
+    name: r.name,
+    admin1: r.admin1,
+    country: r.country,
     lat: r.latitude,
     lon: r.longitude,
   }));
@@ -258,6 +266,181 @@ function renderWeather(place, data) {
   forecastEl.hidden = false;
 }
 
+// ---- City View: Wikipedia photo background (no API key required) ----
+const CITY_IMAGE_CACHE_KEY = 'cityImageCache';
+const MAX_MATCH_DISTANCE_KM = 100; // a Wikipedia page farther than this from the searched place is a different place
+
+function readCityImageCache() {
+  try {
+    return JSON.parse(localStorage.getItem(CITY_IMAGE_CACHE_KEY) || '{}');
+  } catch {
+    return {};
+  }
+}
+
+function updateCityImageCache(key, value) {
+  const cache = readCityImageCache();
+  if (value) cache[key] = value;
+  else delete cache[key];
+  try {
+    localStorage.setItem(CITY_IMAGE_CACHE_KEY, JSON.stringify(cache));
+  } catch {
+    // Storage full or unavailable: the cache is only an optimization.
+  }
+}
+
+// admin1 is part of the key so "Springfield, Illinois" and "Springfield, Massachusetts" don't collide.
+function cityCacheKey(cityName, countryName, admin1) {
+  return [cityName, admin1, countryName].filter(Boolean).join(',');
+}
+
+function distanceKm(lat1, lon1, lat2, lon2) {
+  const rad = (d) => (d * Math.PI) / 180;
+  const a = Math.sin(rad(lat2 - lat1) / 2) ** 2
+    + Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(rad(lon2 - lon1) / 2) ** 2;
+  return 6371 * 2 * Math.asin(Math.sqrt(a));
+}
+
+function normalizeForMatch(str) {
+  return str.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); // "Reykjavík" ~ "Reykjavik"
+}
+
+async function fetchWikiSummary(title, signal) {
+  const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g, '_'))}`;
+  const res = await fetch(url, { signal });
+  return res.ok ? res.json() : null; // 404 = no such page
+}
+
+// Turns a summary into { image, page }, or null if it's a disambiguation page,
+// a page about somewhere else, or has no image.
+function usableCityImage(summary, lat, lon) {
+  if (!summary || summary.type === 'disambiguation') return null;
+
+  // Summaries of geotagged pages carry coordinates: use them to reject namesakes.
+  if (lat != null && lon != null) {
+    const c = summary.coordinates;
+    if (!c || distanceKm(lat, lon, c.lat, c.lon) > MAX_MATCH_DISTANCE_KM) return null;
+  }
+
+  const image = summary.originalimage?.source || summary.thumbnail?.source;
+  if (!image) return null;
+  return { image, page: summary.content_urls?.desktop?.page || null };
+}
+
+// Returns { image, page } or null. Never throws: a failed lookup just means no background.
+async function getCityImage(cityName, countryName, { admin1, lat, lon, signal } = {}) {
+  const key = cityCacheKey(cityName, countryName, admin1);
+  const cached = readCityImageCache()[key];
+  if (cached) return cached;
+
+  try {
+    // 1. Try the city name as the page title.
+    let result = usableCityImage(await fetchWikiSummary(cityName, signal), lat, lon);
+
+    // 2. Otherwise search, biased toward region + country, and take the first candidate that qualifies.
+    if (!result) {
+      const query = [cityName, admin1, countryName].filter(Boolean).join(' ');
+      const url = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&srlimit=3&format=json&origin=*`;
+      const res = await fetch(url, { signal });
+      if (res.ok) {
+        const data = await res.json();
+        const wanted = normalizeForMatch(cityName);
+        for (const hit of data.query?.search || []) {
+          // Skip articles that merely mention the city (e.g. its university or sports team).
+          if (!normalizeForMatch(hit.title).includes(wanted)) continue;
+          result = usableCityImage(await fetchWikiSummary(hit.title, signal), lat, lon);
+          if (result) break;
+        }
+      }
+    }
+
+    if (result) updateCityImageCache(key, result);
+    return result;
+  } catch {
+    return null;
+  }
+}
+
+// Old recents were saved before places carried name/country, so fall back to parsing the label.
+function cityPartsFor(place) {
+  if (place.name) return { name: place.name, admin1: place.admin1, country: place.country };
+  if (place.label === 'My Location') return null; // no city name to look up
+  const parts = place.label.split(', ');
+  return {
+    name: parts[0],
+    admin1: parts.length > 2 ? parts[1] : undefined,
+    country: parts.length > 1 ? parts[parts.length - 1] : undefined,
+  };
+}
+
+function preloadImage(url) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(true);
+    img.onerror = () => resolve(false);
+    img.src = url;
+  });
+}
+
+function fadeOutCityLayers(except) {
+  [...cityBgEl.children].forEach((layer) => {
+    if (layer === except) return;
+    layer.classList.remove('visible');
+    setTimeout(() => layer.remove(), 450); // after the 0.4s fade
+  });
+}
+
+function showCityBackground({ image, page }) {
+  const layer = document.createElement('div');
+  layer.className = 'city-bg-layer';
+  layer.style.backgroundImage = `linear-gradient(rgba(0,0,0,0.4), rgba(0,0,0,0.6)), url(${JSON.stringify(image)})`;
+  cityBgEl.appendChild(layer);
+  void layer.offsetWidth; // commit opacity:0 first so adding .visible animates instead of popping
+  layer.classList.add('visible');
+  fadeOutCityLayers(layer);
+
+  document.body.classList.add('has-city-bg');
+  if (page) {
+    cityCreditEl.href = page;
+    cityCreditEl.hidden = false;
+  } else {
+    cityCreditEl.hidden = true;
+  }
+}
+
+function clearCityBackground() {
+  fadeOutCityLayers(null);
+  document.body.classList.remove('has-city-bg');
+  cityCreditEl.hidden = true;
+}
+
+// Pass null to clear. Makes no network requests while City View is off.
+async function updateCityView(place) {
+  if (cityImageController) cityImageController.abort(); // drop a stale lookup from a previous city
+  const parts = cityView && place ? cityPartsFor(place) : null;
+  if (!parts) {
+    clearCityBackground();
+    return;
+  }
+
+  const controller = new AbortController();
+  cityImageController = controller;
+  const result = await getCityImage(parts.name, parts.country, {
+    admin1: parts.admin1,
+    lat: place.lat,
+    lon: place.lon,
+    signal: controller.signal,
+  });
+  if (controller.signal.aborted) return;
+
+  if (result && await preloadImage(result.image)) {
+    if (!controller.signal.aborted) showCityBackground(result);
+  } else if (!controller.signal.aborted) {
+    if (result) updateCityImageCache(cityCacheKey(parts.name, parts.country, parts.admin1), null); // dead URL
+    clearCityBackground();
+  }
+}
+
 // ---- Main flow ----
 async function loadWeather(place) {
   clearSuggestions();
@@ -268,11 +451,14 @@ async function loadWeather(place) {
     hideStatus();
     renderWeather(place, data);
     saveRecent(place);
+    updateCityView(place);
   } catch (err) {
     showStatus("Couldn't load weather for that location. Please try again.", true);
     currentWeatherEl.hidden = true;
     hourlyForecastEl.hidden = true;
     forecastEl.hidden = true;
+    lastResult = null;
+    updateCityView(null);
   }
 }
 
@@ -355,9 +541,21 @@ function handleUnitToggle() {
   }
 }
 
+function applyCityViewToggle() {
+  cityViewToggle.setAttribute('aria-pressed', String(cityView));
+}
+
+function handleCityViewToggle() {
+  cityView = !cityView;
+  localStorage.setItem('weatherCityView', cityView ? 'on' : 'off');
+  applyCityViewToggle();
+  updateCityView(lastResult ? lastResult.place : null);
+}
+
 // ---- Init ----
 unitToggle.textContent = `°${unit}`;
 applyTheme();
+applyCityViewToggle();
 searchForm.addEventListener('submit', handleSearchSubmit);
 citySearch.addEventListener('input', handleSearchInput);
 document.addEventListener('click', (e) => {
@@ -368,6 +566,7 @@ document.addEventListener('click', (e) => {
 locateBtn.addEventListener('click', handleLocate);
 unitToggle.addEventListener('click', handleUnitToggle);
 themeToggle.addEventListener('click', handleThemeToggle);
+cityViewToggle.addEventListener('click', handleCityViewToggle);
 
 renderRecents();
 
