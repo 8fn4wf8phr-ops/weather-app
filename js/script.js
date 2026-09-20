@@ -156,6 +156,8 @@ async function searchCities(query) {
     name: r.name,
     admin1: r.admin1,
     country: r.country,
+    population: r.population,
+    featureCode: r.feature_code, // 'PPLC' = national capital
     lat: r.latitude,
     lon: r.longitude,
   }));
@@ -281,6 +283,16 @@ function renderWeather(place, data) {
 const CITY_IMAGE_CACHE_KEY = 'cityImageCache';
 const MAX_MATCH_DISTANCE_KM = 100; // a Wikipedia page farther than this from the searched place is a different place
 
+// Unsplash search is plain text with no location check, so it's only trusted first for big
+// cities (plenty of correctly tagged photos). Smaller places try Wikipedia first, which
+// verifies by coordinates, and use Unsplash only as a fallback. Places without a known
+// population (e.g. recents saved by older versions) count as small.
+const LARGE_CITY_POPULATION = 250000;
+
+function isLargeCity(place) {
+  return place.featureCode === 'PPLC' || (place.population ?? 0) >= LARGE_CITY_POPULATION;
+}
+
 function readCityImageCache() {
   try {
     return JSON.parse(localStorage.getItem(CITY_IMAGE_CACHE_KEY) || '{}');
@@ -397,15 +409,19 @@ function normalizeCachedImage(entry) {
 }
 
 // Returns { url, source, ... } or null. Never throws: a failed lookup just means no background.
-// Order: persisted cache, then Unsplash, then Wikipedia. The cache is checked first so a city
+// Order: persisted cache first, then the two sources (Unsplash first only when preferUnsplash,
+// i.e. for large cities; otherwise Wikipedia first). The cache is checked first so a city
 // that's already cached (even from an earlier session) never spends Unsplash quota.
-async function getCityImage(cityName, countryName, { admin1, lat, lon, signal } = {}) {
+async function getCityImage(cityName, countryName, { admin1, lat, lon, signal, preferUnsplash = false } = {}) {
   const key = cityCacheKey(cityName, countryName, admin1);
   const cached = normalizeCachedImage(readCityImageCache()[key]);
   if (cached) return cached;
 
-  const result = (await getUnsplashCityImage(cityName, countryName, { signal }))
-    || (signal?.aborted ? null : await getWikipediaCityImage(cityName, countryName, { admin1, lat, lon, signal }));
+  const fromUnsplash = () => getUnsplashCityImage(cityName, countryName, { signal });
+  const fromWikipedia = () => getWikipediaCityImage(cityName, countryName, { admin1, lat, lon, signal });
+  const [first, second] = preferUnsplash ? [fromUnsplash, fromWikipedia] : [fromWikipedia, fromUnsplash];
+
+  const result = (await first()) || (signal?.aborted ? null : await second());
   if (result) updateCityImageCache(key, result);
   return result;
 }
@@ -539,6 +555,7 @@ async function updateCityView(place) {
     lat: place.lat,
     lon: place.lon,
     signal: controller.signal,
+    preferUnsplash: isLargeCity(place),
   });
   if (controller.signal.aborted) return;
 
