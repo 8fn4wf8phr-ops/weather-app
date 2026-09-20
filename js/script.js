@@ -1,3 +1,14 @@
+// ======================================================================
+// UNSPLASH ACCESS KEY (optional): paste yours between the quotes below.
+//   1. Create a free account at https://unsplash.com/developers
+//   2. Register an application and copy its "Access Key"
+// Leave the placeholder as-is to skip Unsplash: City View then uses
+// Wikipedia only. This is a public, browser-side key (never paste the
+// Secret Key here), and the demo tier's 50 requests/hour is shared by
+// everyone using the site.
+// ======================================================================
+const UNSPLASH_ACCESS_KEY = 'YOUR_UNSPLASH_ACCESS_KEY';
+
 // ---- Weather code -> description/icon (WMO codes, used by Open-Meteo) ----
 const WEATHER_CODES = {
   0: { desc: 'Clear sky', icon: '☀️', category: 'wx-sun' },
@@ -266,7 +277,7 @@ function renderWeather(place, data) {
   forecastEl.hidden = false;
 }
 
-// ---- City View: Wikipedia photo background (no API key required) ----
+// ---- City View: photo background (Unsplash if a key is set, else Wikipedia) ----
 const CITY_IMAGE_CACHE_KEY = 'cityImageCache';
 const MAX_MATCH_DISTANCE_KM = 100; // a Wikipedia page farther than this from the searched place is a different place
 
@@ -302,7 +313,7 @@ function distanceKm(lat1, lon1, lat2, lon2) {
 }
 
 function normalizeForMatch(str) {
-  return str.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); // "Reykjavík" ~ "Reykjavik"
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); // "Reykjavík" ~ "Reykjavik"
 }
 
 async function fetchWikiSummary(title, signal) {
@@ -311,7 +322,7 @@ async function fetchWikiSummary(title, signal) {
   return res.ok ? res.json() : null; // 404 = no such page
 }
 
-// Turns a summary into { image, page }, or null if it's a disambiguation page,
+// Turns a summary into { url, source, page }, or null if it's a disambiguation page,
 // a page about somewhere else, or has no image.
 function usableCityImage(summary, lat, lon) {
   if (!summary || summary.type === 'disambiguation') return null;
@@ -322,17 +333,85 @@ function usableCityImage(summary, lat, lon) {
     if (!c || distanceKm(lat, lon, c.lat, c.lon) > MAX_MATCH_DISTANCE_KM) return null;
   }
 
-  const image = summary.originalimage?.source || summary.thumbnail?.source;
-  if (!image) return null;
-  return { image, page: summary.content_urls?.desktop?.page || null };
+  const url = summary.originalimage?.source || summary.thumbnail?.source;
+  if (!url) return null;
+  return { url, source: 'wikipedia', page: summary.content_urls?.desktop?.page || null };
 }
 
-// Returns { image, page } or null. Never throws: a failed lookup just means no background.
+function unsplashConfigured() {
+  return Boolean(UNSPLASH_ACCESS_KEY) && UNSPLASH_ACCESS_KEY !== 'YOUR_UNSPLASH_ACCESS_KEY';
+}
+
+// Returns { url, source: 'unsplash', photographer, photographerUrl } or null.
+// Never throws. Rate limiting (403) is logged separately from a genuine no-match so
+// it's clear during testing why the Wikipedia fallback kicked in.
+async function getUnsplashCityImage(cityName, countryName, { signal } = {}) {
+  if (!unsplashConfigured()) return null;
+
+  const params = new URLSearchParams({
+    query: [cityName, countryName, 'cityscape'].filter(Boolean).join(' '),
+    per_page: '1',
+    orientation: 'landscape',
+  });
+  try {
+    const res = await fetch(`https://api.unsplash.com/search/photos?${params}`, {
+      headers: { Authorization: `Client-ID ${UNSPLASH_ACCESS_KEY}` },
+      signal,
+    });
+    if (res.status === 403) {
+      console.warn('Unsplash: HTTP 403, most likely the hourly rate limit (demo tier: 50 requests/hour). Falling back to Wikipedia.');
+      return null;
+    }
+    if (res.status === 401) {
+      console.warn('Unsplash: HTTP 401, the Access Key was rejected. Check UNSPLASH_ACCESS_KEY. Falling back to Wikipedia.');
+      return null;
+    }
+    if (!res.ok) {
+      console.warn(`Unsplash: request failed with HTTP ${res.status}. Falling back to Wikipedia.`);
+      return null;
+    }
+
+    const photo = (await res.json()).results?.[0];
+    if (!photo?.urls?.regular) {
+      console.info(`Unsplash: no match for "${cityName}". Falling back to Wikipedia.`);
+      return null;
+    }
+    return {
+      url: photo.urls.regular,
+      source: 'unsplash',
+      photographer: photo.user?.name,
+      photographerUrl: photo.user?.links?.html,
+    };
+  } catch (err) {
+    if (err.name !== 'AbortError') console.warn(`Unsplash: request failed (${err.message}). Falling back to Wikipedia.`);
+    return null;
+  }
+}
+
+// Entries cached before Unsplash support were { image, page }: treat them as Wikipedia.
+function normalizeCachedImage(entry) {
+  if (!entry) return null;
+  if (entry.url) return entry;
+  if (entry.image) return { url: entry.image, source: 'wikipedia', page: entry.page };
+  return null;
+}
+
+// Returns { url, source, ... } or null. Never throws: a failed lookup just means no background.
+// Order: persisted cache, then Unsplash, then Wikipedia. The cache is checked first so a city
+// that's already cached (even from an earlier session) never spends Unsplash quota.
 async function getCityImage(cityName, countryName, { admin1, lat, lon, signal } = {}) {
   const key = cityCacheKey(cityName, countryName, admin1);
-  const cached = readCityImageCache()[key];
+  const cached = normalizeCachedImage(readCityImageCache()[key]);
   if (cached) return cached;
 
+  const result = (await getUnsplashCityImage(cityName, countryName, { signal }))
+    || (signal?.aborted ? null : await getWikipediaCityImage(cityName, countryName, { admin1, lat, lon, signal }));
+  if (result) updateCityImageCache(key, result);
+  return result;
+}
+
+// Wikipedia lookup (no key required). Returns { url, source: 'wikipedia', page } or null.
+async function getWikipediaCityImage(cityName, countryName, { admin1, lat, lon, signal } = {}) {
   try {
     // 1. Try the city name as the page title.
     let result = usableCityImage(await fetchWikiSummary(cityName, signal), lat, lon);
@@ -354,7 +433,6 @@ async function getCityImage(cityName, countryName, { admin1, lat, lon, signal } 
       }
     }
 
-    if (result) updateCityImageCache(key, result);
     return result;
   } catch {
     return null;
@@ -390,28 +468,59 @@ function fadeOutCityLayers(except) {
   });
 }
 
-function showCityBackground({ image, page }) {
+// Unsplash asks for UTM params on links back to them.
+const UNSPLASH_UTM = 'utm_source=weather_app&utm_medium=referral';
+
+function creditLink(href, text) {
+  const a = document.createElement('a');
+  a.href = href;
+  a.textContent = text;
+  a.target = '_blank';
+  a.rel = 'noopener';
+  return a;
+}
+
+function isHttps(url) {
+  return typeof url === 'string' && url.startsWith('https://');
+}
+
+function renderCityCredit(photo) {
+  cityCreditEl.replaceChildren();
+  if (photo.source === 'unsplash') {
+    const unsplashLink = creditLink(`https://unsplash.com/?${UNSPLASH_UTM}`, 'Unsplash');
+    if (photo.photographer && isHttps(photo.photographerUrl)) {
+      const profile = photo.photographerUrl + (photo.photographerUrl.includes('?') ? '&' : '?') + UNSPLASH_UTM;
+      cityCreditEl.append('Photo by ', creditLink(profile, photo.photographer), ' on ', unsplashLink);
+    } else {
+      cityCreditEl.append('Photo on ', unsplashLink);
+    }
+  } else if (isHttps(photo.page)) {
+    cityCreditEl.append(creditLink(photo.page, 'Photo via Wikipedia'));
+  } else {
+    cityCreditEl.hidden = true;
+    return;
+  }
+  cityCreditEl.hidden = false;
+}
+
+function showCityBackground(photo) {
   const layer = document.createElement('div');
   layer.className = 'city-bg-layer';
-  layer.style.backgroundImage = `linear-gradient(rgba(0,0,0,0.4), rgba(0,0,0,0.6)), url(${JSON.stringify(image)})`;
+  layer.style.backgroundImage = `linear-gradient(rgba(0,0,0,0.4), rgba(0,0,0,0.6)), url(${JSON.stringify(photo.url)})`;
   cityBgEl.appendChild(layer);
   void layer.offsetWidth; // commit opacity:0 first so adding .visible animates instead of popping
   layer.classList.add('visible');
   fadeOutCityLayers(layer);
 
   document.body.classList.add('has-city-bg');
-  if (page) {
-    cityCreditEl.href = page;
-    cityCreditEl.hidden = false;
-  } else {
-    cityCreditEl.hidden = true;
-  }
+  renderCityCredit(photo);
 }
 
 function clearCityBackground() {
   fadeOutCityLayers(null);
   document.body.classList.remove('has-city-bg');
   cityCreditEl.hidden = true;
+  cityCreditEl.replaceChildren();
 }
 
 // Pass null to clear. Makes no network requests while City View is off.
@@ -433,7 +542,7 @@ async function updateCityView(place) {
   });
   if (controller.signal.aborted) return;
 
-  if (result && await preloadImage(result.image)) {
+  if (result && await preloadImage(result.url)) {
     if (!controller.signal.aborted) showCityBackground(result);
   } else if (!controller.signal.aborted) {
     if (result) updateCityImageCache(cityCacheKey(parts.name, parts.country, parts.admin1), null); // dead URL
